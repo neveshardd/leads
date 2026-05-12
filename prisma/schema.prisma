@@ -1,0 +1,61 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum LeadStatus {
+  novo
+  contatado
+  qualificado
+  perdido
+}
+
+model Lead {
+  id           String      @id @default(cuid())
+  name         String
+  email        String
+  phone        String      @default("")
+  company      String      @default("")
+  category     String      @default("")
+  city         String      @default("")
+  state        String      @default("")
+  country      String      @default("")
+  webSourceUrl String?     @unique
+  status       LeadStatus  @default(novo)
+  createdAt    DateTime    @default(now())
+  emailSents   EmailSent[]
+
+  @@index([status])
+  @@index([name])
+  @@index([email])
+  @@index([company])
+  @@index([category])
+  @@index([city])
+  @@index([state])
+  @@index([country])
+}
+
+/// Registro de e-mail enviado com sucesso (opção A: qualquer envio bloqueia novos disparos até `allowResend`).
+model EmailSent {
+  id               String   @id @default(cuid())
+  leadId           String
+  templateId       String /// ID do template publicado no Resend
+  toAddress        String
+  resendMessageId  String?
+  sentAt           DateTime @default(now())
+  lead             Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+/// Cache de respostas Serper para reduzir consumo de créditos (mesma consulta = hit até expirar).
+model SerperSearchCache {
+  id           String   @id @default(cuid())
+  queryKey     String   @unique
+  responseJson Json
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+}

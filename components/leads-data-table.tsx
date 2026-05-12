@@ -11,7 +11,7 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { ChevronDownIcon, ChevronUpIcon, ListPlus, CheckCircle2, Trash2, ListChecks } from "lucide-react";
+import { ChevronDownIcon, ChevronUpIcon, ListPlus, CheckCircle2, Trash2, ListChecks, Copy, Check, Pencil } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,9 +54,12 @@ import { formatPtDate } from "@/lib/format";
 import {
   formatLeadEmailForTable,
   formatLeadPhoneForTable,
+  hasSendableLeadEmail,
   isSyntheticWebImportEmail,
+  leadWebUrlFromStoredSource,
 } from "@/lib/lead-display";
-import { useBulkDeleteLeadsMutation, useDeleteLeadMutation } from "@/lib/hooks/use-leads";
+import { useBulkDeleteLeadsMutation, useDeleteLeadMutation, useUpdateLeadMutation } from "@/lib/hooks/use-leads";
+import { EditLeadDialog } from "@/components/edit-lead-dialog";
 import { cn } from "@/lib/utils";
 
 type ColW = { w: string };
@@ -65,30 +68,32 @@ function headerWidths(showLastEmail: boolean): Record<string, string> {
   if (showLastEmail) {
     return {
       select: "3%",
-      name: "14%",
-      email: "13%",
-      phone: "8%",
-      company: "12%",
+      name: "12%",
+      email: "14%",
+      phone: "9%",
+      company: "11%",
       category: "7%",
-      local: "11%",
+      local: "10%",
       status: "7%",
       createdAt: "7%",
-      lastEmail: "6%",
-      actions: "6%",
-      delete: "6%",
+      lastEmail: "5%",
+      edit: "5%",
+      actions: "5%",
+      delete: "5%",
     };
   }
   return {
     select: "3%",
-    name: "15%",
-    email: "14%",
-    phone: "9%",
-    company: "13%",
+    name: "13%",
+    email: "15%",
+    phone: "10%",
+    company: "12%",
     category: "8%",
-    local: "12%",
+    local: "11%",
     status: "8%",
     createdAt: "8%",
-    actions: "6%",
+    edit: "5%",
+    actions: "5%",
     delete: "4%",
   };
 }
@@ -106,6 +111,44 @@ function CellText({
     <div className={cn("min-w-0 truncate text-left", className)} title={title}>
       {children}
     </div>
+  );
+}
+
+function CopyContactButton({
+  value,
+  label,
+  disabled,
+}: {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handle = async () => {
+    if (disabled || !value.trim()) return;
+    try {
+      await navigator.clipboard.writeText(value.trim());
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+      disabled={disabled || !value.trim()}
+      onClick={() => void handle()}
+      aria-label={copied ? `${label} copiado` : `Copiar ${label}`}
+      title={copied ? "Copiado" : `Copiar ${label}`}
+    >
+      {copied ? <Check className="size-3.5 text-emerald-600" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+    </Button>
   );
 }
 
@@ -137,7 +180,9 @@ export function LeadsDataTable({
   const { sendListIds, toggleSendListId, addSendListIds } = useLeadsStore();
   const deleteMut = useDeleteLeadMutation();
   const bulkDeleteMut = useBulkDeleteLeadsMutation();
+  const updateMut = useUpdateLeadMutation();
   const [leadToDelete, setLeadToDelete] = useState<LeadPublic | null>(null);
+  const [leadToEdit, setLeadToEdit] = useState<LeadPublic | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
@@ -179,9 +224,25 @@ export function LeadsDataTable({
         ...w("name"),
         accessorKey: "name",
         header: "Nome",
-        cell: ({ row }) => (
-          <CellText title={row.original.name}>{row.original.name}</CellText>
-        ),
+        cell: ({ row }) => {
+          const name = row.original.name;
+          const href = leadWebUrlFromStoredSource(row.original.webSourceUrl, row.original.url);
+          if (!href) {
+            return <CellText title={name}>{name}</CellText>;
+          }
+          return (
+            <CellText title={`${name} — abrir site`}>
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-primary underline-offset-2 hover:underline"
+              >
+                {name}
+              </a>
+            </CellText>
+          );
+        },
       },
       {
         ...w("email"),
@@ -193,10 +254,14 @@ export function LeadsDataTable({
           const title = isSyntheticWebImportEmail(raw)
             ? "Sem e-mail de contato (importação web). Edite o lead para informar um e-mail."
             : raw || undefined;
+          const canCopy = hasSendableLeadEmail(raw);
           return (
-            <CellText className="text-sm" title={title}>
-              {shown}
-            </CellText>
+            <div className="flex min-w-0 items-center gap-0.5">
+              <CellText className="min-w-0 flex-1 text-sm" title={title}>
+                {shown}
+              </CellText>
+              <CopyContactButton value={raw} label="e-mail" disabled={!canCopy} />
+            </div>
           );
         },
       },
@@ -207,10 +272,17 @@ export function LeadsDataTable({
         cell: ({ row }) => {
           const raw = row.original.phone ?? "";
           const shown = formatLeadPhoneForTable(raw);
+          const canCopy = Boolean(raw.trim()) && raw.trim() !== "—";
           return (
-            <CellText className="tabular-nums text-sm" title={raw?.trim() || undefined}>
-              {shown}
-            </CellText>
+            <div className="flex min-w-0 items-center gap-0.5">
+              <CellText
+                className="min-w-0 flex-1 tabular-nums text-sm"
+                title={raw?.trim() || undefined}
+              >
+                {shown}
+              </CellText>
+              <CopyContactButton value={raw} label="telefone" disabled={!canCopy} />
+            </div>
           );
         },
       },
@@ -289,27 +361,45 @@ export function LeadsDataTable({
     }
 
     base.push({
-      ...w("actions"),
+      ...w("edit"),
+      id: "edit",
+      enableSorting: false,
+      header: () => <span className="sr-only">Editar</span>,
+      cell: ({ row }) => (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+          title="Editar lead"
+          disabled={updateMut.isPending || deleteMut.isPending || bulkDeleteMut.isPending}
+          onClick={() => setLeadToEdit(row.original)}
+        >
+          <Pencil className="size-4" aria-hidden />
+        </Button>
+      ),
+    });
+
+    base.push({
       id: "actions",
       enableSorting: false,
       header: () => <span className="sr-only">Fila</span>,
       cell: ({ row }) => {
         const inList = sendListIds.includes(row.original.id);
-        const isWeb = row.original.source === "web";
+        const canQueue = hasSendableLeadEmail(row.original.email);
         return (
           <Button
             size="icon"
             variant={inList ? "secondary" : "ghost"}
             className="size-8 shrink-0"
             title={
-              isWeb
-                ? "Pré-visualização web não entra na fila"
+              !canQueue
+                ? "Sem e-mail válido para disparo — edite o lead ou complete o e-mail"
                 : inList
                   ? "Remover da lista de envios"
                   : "Adicionar à lista de envios"
             }
-            disabled={isWeb}
-            onClick={() => !isWeb && toggleSendListId(row.original.id)}
+            disabled={!canQueue}
+            onClick={() => canQueue && toggleSendListId(row.original.id)}
           >
             {inList ? <CheckCircle2 className="size-4" /> : <ListPlus className="size-4" />}
           </Button>
@@ -337,7 +427,7 @@ export function LeadsDataTable({
     });
 
     return base;
-  }, [bulkDeleteMut.isPending, deleteMut.isPending, sendListIds, showBulkToolbar, showLastEmailColumn, toggleSendListId, widths]);
+  }, [bulkDeleteMut.isPending, deleteMut.isPending, updateMut.isPending, sendListIds, showBulkToolbar, showLastEmailColumn, toggleSendListId, widths]);
 
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
@@ -365,7 +455,7 @@ export function LeadsDataTable({
   const selectedCount = selectedRows.length;
   const selectedIds = selectedRows.map((r) => r.original.id);
   const selectedAddableIds = selectedRows
-    .filter((r) => r.original.source !== "web")
+    .filter((r) => hasSendableLeadEmail(r.original.email))
     .map((r) => r.original.id);
 
   const confirmDelete = () => {
@@ -424,6 +514,14 @@ export function LeadsDataTable({
 
   return (
     <>
+      <EditLeadDialog
+        lead={leadToEdit}
+        open={leadToEdit != null}
+        onOpenChange={(open) => {
+          if (!open) setLeadToEdit(null);
+        }}
+      />
+
       <Dialog open={leadToDelete != null} onOpenChange={(open) => !open && setLeadToDelete(null)}>
         <DialogPopup showCloseButton>
           <DialogHeader>

@@ -1,6 +1,7 @@
 import type { LeadStatus as PrismaLeadStatus } from "@prisma/client";
 import { leadPublicSchema } from "@/lib/schemas/lead";
 import type { LeadPublic } from "@/lib/schemas/lead";
+import { leadWebUrlFromStoredSource } from "@/lib/lead-display";
 
 export type LeadRowWithSents = {
   id: string;
@@ -43,5 +44,6 @@ export function mapLeadToPublic(lead: LeadRowWithSents): LeadPublic {
     createdAt: lead.createdAt.toISOString(),
     source: "database",
     lastEmailSentAt: last ? last.toISOString() : null,
+    url: leadWebUrlFromStoredSource(lead.webSourceUrl),
   });
 }

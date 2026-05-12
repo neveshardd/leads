@@ -2,17 +2,12 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { Resend } from "resend";
 import { getPrisma } from "@/lib/prisma";
+import { hasSendableLeadEmail } from "@/lib/lead-display";
 import {
   bulkSendBodySchema,
   bulkSendCommitResponseSchema,
   bulkSendDryRunResponseSchema,
 } from "@/lib/schemas/send";
-
-function isSendableEmail(email: string) {
-  const t = email.trim();
-  if (!t || t === "—" || t === "-") return false;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
-}
 
 /** Variáveis comuns para templates no Resend (ajuste as chaves no painel para coincidir). */
 function resendVariablesForLead(lead: { name: string; company: string }): Record<string, string | number> {
@@ -69,10 +64,10 @@ export async function POST(req: Request) {
     );
 
     const duplicateLeadIds = leads.filter((l) => alreadySentSet.has(l.id)).map((l) => l.id);
-    const invalidEmailLeadIds = leads.filter((l) => !isSendableEmail(l.email)).map((l) => l.id);
+    const invalidEmailLeadIds = leads.filter((l) => !hasSendableLeadEmail(l.email)).map((l) => l.id);
 
     const readyToSendCount = leads.filter((l) => {
-      if (!isSendableEmail(l.email)) return false;
+      if (!hasSendableLeadEmail(l.email)) return false;
       if (alreadySentSet.has(l.id) && !body.allowResend) return false;
       return true;
     }).length;
@@ -107,7 +102,7 @@ export async function POST(req: Request) {
     const errors: { leadId: string; message: string }[] = [];
 
     for (const lead of leads) {
-      if (!isSendableEmail(lead.email)) {
+      if (!hasSendableLeadEmail(lead.email)) {
         skippedInvalidEmail += 1;
         continue;
       }

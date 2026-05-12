@@ -3,7 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { useLeadsStore } from "@/store/leads";
-import type { LeadCreateBody, LeadCreateResponse, LeadsListQuery, LeadsListResponse } from "@/lib/schemas/lead";
+import type {
+  LeadCreateBody,
+  LeadCreateResponse,
+  LeadsListQuery,
+  LeadsListResponse,
+} from "@/lib/schemas/lead";
 import type { LeadImportWebBody, LeadImportWebResponse } from "@/lib/schemas/lead-import";
 import type { BulkDeleteLeadsBody } from "@/lib/schemas/lead-bulk";
 
@@ -13,12 +18,16 @@ export function useLeadsQuery(params: LeadsListQuery) {
     queryFn: async () => {
       const { data } = await api.get<LeadsListResponse>("/leads", {
         params: {
+          mailbox: params.mailbox ?? "inbox",
           q: params.q || undefined,
           category: params.category || undefined,
           city: params.city || undefined,
           state: params.state || undefined,
           country: params.country || undefined,
           status: params.status ?? "todos",
+          ...(params.onlyRealEmail ? { onlyRealEmail: "1" } : {}),
+          ...(params.hasPhone ? { hasPhone: "1" } : {}),
+          ...(params.hasCompany ? { hasCompany: "1" } : {}),
         },
       });
       return data;
@@ -47,6 +56,20 @@ export function useCreateLeadMutation() {
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["leads"] });
+    },
+  });
+}
+
+export function useUpdateLeadMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, body }: { id: string; body: LeadCreateBody }) => {
+      const { data } = await api.patch<LeadCreateResponse>(`/leads/${id}`, body);
+      return data.lead;
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["leads"] });
+      await qc.invalidateQueries({ queryKey: ["leads", "lookup"] });
     },
   });
 }

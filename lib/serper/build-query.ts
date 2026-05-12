@@ -59,3 +59,12 @@ export function buildSerperMapsRequest(f: SerperSearchFacets): {
     hl: "pt-br",
   };
 }
+
+/** Consulta orgânica (2ª chamada Serper) para tentar achar e-mails de contato na SERP. */
+export function buildOrganicEmailSearchQuery(mapsReq: { mapsQ: string }): string {
+  const q = mapsReq.mapsQ.trim().replace(/\s+/g, " ");
+  const suffix = " contato email";
+  const max = 480;
+  if (q.length + suffix.length <= max) return `${q}${suffix}`;
+  return `${q.slice(0, Math.max(0, max - suffix.length))}${suffix}`;
+}

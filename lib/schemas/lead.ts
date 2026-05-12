@@ -28,12 +28,29 @@ export const leadPublicSchema = z.object({
 export type LeadPublic = z.infer<typeof leadPublicSchema>;
 
 export const leadsListQuerySchema = z.object({
+  /** `inbox`: sem envio pela plataforma. `sent`: já existe registro em EmailSent. */
+  mailbox: z.enum(["inbox", "sent"]).optional().default("inbox"),
   q: z.string().optional(),
   category: z.string().optional(),
   city: z.string().optional(),
   state: z.string().optional(),
   country: z.string().optional(),
   status: z.union([leadStatusSchema, z.literal("todos")]).optional().default("todos"),
+  /** Só leads com e-mail válido para disparo (exclui vazio, “—”, sintético @import.invalid). */
+  onlyRealEmail: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((v) => v === true || v === "1" || v === "true" || v === "yes"),
+  /** Telefone preenchido (não vazio e não “—”). */
+  hasPhone: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((v) => v === true || v === "1" || v === "true" || v === "yes"),
+  /** Empresa / razão preenchida (não vazia e não “—”). */
+  hasCompany: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((v) => v === true || v === "1" || v === "true" || v === "yes"),
 });
 
 export type LeadsListQuery = z.infer<typeof leadsListQuerySchema>;
@@ -69,3 +86,7 @@ export const leadCreateResponseSchema = z.object({
 });
 
 export type LeadCreateResponse = z.infer<typeof leadCreateResponseSchema>;
+
+/** Resposta de PATCH /api/leads/:id (mesmo formato que criação). */
+export const leadUpdateResponseSchema = leadCreateResponseSchema;
+export type LeadUpdateResponse = z.infer<typeof leadUpdateResponseSchema>;

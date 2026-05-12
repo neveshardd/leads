@@ -35,6 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { SerperImportCandidate } from "@/lib/schemas/serper";
+import { formatLeadEmailForTable, isSyntheticWebImportEmail } from "@/lib/lead-display";
 import { cn } from "@/lib/utils";
 
 export type MapsProspectsTableProps = {
@@ -59,12 +60,30 @@ export function MapsProspectsTable({
       {
         accessorKey: "title",
         header: "Estabelecimento",
-        size: 220,
+        size: 200,
         cell: ({ row }) => (
           <div className="min-w-0 font-medium leading-snug" title={row.original.title}>
             <span className="line-clamp-2">{row.original.title}</span>
           </div>
         ),
+      },
+      {
+        id: "email",
+        header: "E-mail (inferido)",
+        size: 180,
+        enableSorting: false,
+        cell: ({ row }) => {
+          const e = row.original.email?.trim();
+          const shown = formatLeadEmailForTable(e);
+          const hint = e && !isSyntheticWebImportEmail(e) ? e : undefined;
+          return (
+            <div className="min-w-0 text-xs" title={hint}>
+              <span className={e && !isSyntheticWebImportEmail(e) ? "text-foreground" : "text-muted-foreground"}>
+                {shown}
+              </span>
+            </div>
+          );
+        },
       },
       {
         accessorKey: "snippet",

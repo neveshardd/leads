@@ -9,11 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardPanel, CardTitle } from "@/components/ui/card";
 import { MapsProspectsTable } from "@/components/maps-prospects-table";
-import { LeadsDataTable } from "@/components/leads-data-table";
 import { STATUS_LABELS, type LeadStatus } from "@/lib/schemas/lead-status";
 import { buildSerperSearchString, type SerperSearchFacets } from "@/lib/serper/build-query";
 import type { SerperImportCandidate } from "@/lib/schemas/serper";
-import { useImportWebLeadsMutation, useLeadsQuery } from "@/lib/hooks/use-leads";
+import { useImportWebLeadsMutation } from "@/lib/hooks/use-leads";
 import { useSerperLeadsQuery } from "@/lib/hooks/use-serper";
 import { cn } from "@/lib/utils";
 
@@ -68,13 +67,11 @@ export default function BuscaPage() {
   const [searchHint, setSearchHint] = useState<string | null>(null);
   const effectiveFacets = searchFacets ?? emptyFacets;
 
-  const leadsQ = useLeadsQuery({ ...effectiveFacets, status: statusFilter });
   const serpQ = useSerperLeadsQuery(effectiveFacets, {
     enabled: hasSearched && statusFilter === "todos",
   });
   const importMut = useImportWebLeadsMutation();
 
-  const dbRows = leadsQ.data?.leads ?? [];
   const importCandidates: SerperImportCandidate[] = useMemo(
     () => (statusFilter === "todos" ? (serpQ.data?.importCandidates ?? []) : []),
     [serpQ.data?.importCandidates, statusFilter],

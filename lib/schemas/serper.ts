@@ -75,14 +75,34 @@ export const serperImportCandidateSchema = z.object({
   title: z.string(),
   url: z.string().url(),
   snippet: z.string().optional(),
+  /** E-mail inferido (snippet Maps + busca orgânica em paralelo), quando existir. */
+  email: z.string().email().max(320).optional(),
 });
 
 export type SerperImportCandidate = z.infer<typeof serperImportCandidateSchema>;
+
+/** Métricas opcionais (dev ou `?debug=1`) para diagnosticar cobertura de e-mails. */
+export const serperSearchDebugSchema = z.object({
+  msTotal: z.number(),
+  organicItemsWithEmail: z.number(),
+  scrapeHostsAttempted: z.number().optional(),
+  scrapeHostsWithEmail: z.number().optional(),
+  scrapeHttpRequests: z.number().optional(),
+});
 
 export const serperSearchApiResponseSchema = z.object({
   leads: z.array(serperWebLeadSchema),
   importCandidates: z.array(serperImportCandidateSchema),
   cached: z.boolean(),
+  debug: serperSearchDebugSchema.optional(),
 });
 
 export type SerperSearchApiResponse = z.infer<typeof serperSearchApiResponseSchema>;
+
+/** Cache da rota `/api/search/serper`: Maps + SERP orgânica + e-mails raspados por host do site. */
+export const serperCacheBundleSchema = z.object({
+  maps: serperMapsResponseSchema,
+  organic: serperSearchResponseSchema.optional(),
+  /** host (sem www) → melhor e-mail encontrado na homepage */
+  siteHostEmails: z.record(z.string(), z.string()).optional(),
+});

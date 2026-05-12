@@ -39,7 +39,9 @@ export async function POST(req: NextRequest) {
         await prisma.lead.create({
           data: {
             name: item.title.slice(0, 500),
-            email: syntheticEmailFromUrl(item.url),
+            email: item.email?.trim()
+              ? item.email.trim().slice(0, 320)
+              : syntheticEmailFromUrl(item.url),
             phone: extractPhoneFromSnippet(item.snippet) ?? "",
             company: fallbackCompany(item.snippet, item.title).slice(0, 500),
             category: (loc.category ?? "").trim().slice(0, 200),

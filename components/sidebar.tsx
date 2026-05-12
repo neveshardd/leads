@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { ChevronDown, FileText, List, PanelLeftClose, PanelRightOpen, Search, Send, UserPlus } from "lucide-react";
+import { ChevronDown, FileText, List, MailCheck, PanelLeftClose, PanelRightOpen, Search, Send, UserPlus } from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -14,10 +14,10 @@ import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/", label: "Listagem de Leads", icon: List },
+  { href: "/leads/enviados", label: "Enviados", icon: MailCheck },
   { href: "/leads/busca", label: "Busca de Leads", icon: Search },
-  { href: "/leads/novo", label: "Novo lead (teste)", icon: UserPlus },
+  { href: "/leads/novo", label: "Lead Personalizado", icon: UserPlus },
   { href: "/leads/disparos", label: "Disparos", icon: Send },
-  { href: "/leads/templates", label: "Templates (Resend)", icon: FileText },
 ];
 
 const STORAGE_KEY = "leads-sidebar-collapsed";
@@ -104,7 +104,8 @@ export function Sidebar() {
             />
           </CollapsibleTrigger>
           <CollapsibleContent className="px-3 pb-1 text-xs text-muted-foreground">
-            Importe candidatos da busca web para alimentar a listagem e a fila de envio.
+            Importe candidatos da busca web, edite o lápis na listagem se faltar e-mail e depois envie para a fila
+            de disparos.
           </CollapsibleContent>
         </Collapsible>
       ) : null}

@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useLeadsStore } from "@/store/leads";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Trash2, Send, CheckCircle2, AlertCircle, Inbox, ExternalLink } from "lucide-react";
+import { Trash2, Send, CheckCircle2, AlertCircle, Inbox, ExternalLink, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -23,20 +23,37 @@ import { useLeadsLookupQuery } from "@/lib/hooks/use-leads";
 import { useResendTemplateDetailQuery, useResendTemplatesQuery } from "@/lib/hooks/use-resend-templates";
 import { useBulkSendDryRunQuery, useBulkSendMutation } from "@/lib/hooks/use-send";
 import type { BulkSendCommitResponse } from "@/lib/schemas/send";
-import { formatLeadEmailForTable, isSyntheticWebImportEmail } from "@/lib/lead-display";
+import { formatLeadEmailForTable, hasSendableLeadEmail, isSyntheticWebImportEmail } from "@/lib/lead-display";
+import { EditLeadDialog } from "@/components/edit-lead-dialog";
+import type { LeadPublic } from "@/lib/schemas/lead";
 import { cn } from "@/lib/utils";
 
 const RESEND_DASHBOARD = process.env.NEXT_PUBLIC_RESEND_DASHBOARD_URL ?? "https://resend.com/dashboard";
 
 export default function DisparosPage() {
-  const { sendListIds, toggleSendListId, clearSendList } = useLeadsStore();
+  const { sendListIds, toggleSendListId, clearSendList, removeSendListIds } = useLeadsStore();
   const selectedLeadsQuery = useLeadsLookupQuery(sendListIds);
   const selectedLeads = selectedLeadsQuery.data ?? [];
+
+  const [leadToEdit, setLeadToEdit] = useState<LeadPublic | null>(null);
 
   const templatesQuery = useResendTemplatesQuery();
   const resendTemplates = templatesQuery.data ?? [];
 
   const bulkSend = useBulkSendMutation();
+
+  useEffect(() => {
+    if (!selectedLeadsQuery.data?.length) return;
+    const invalidIds = selectedLeadsQuery.data
+      .filter((l) => !hasSendableLeadEmail(l.email))
+      .map((l) => l.id);
+    if (invalidIds.length > 0) removeSendListIds(invalidIds);
+  }, [selectedLeadsQuery.data, removeSendListIds]);
+
+  const sendableSelectedLeads = useMemo(
+    () => selectedLeads.filter((l) => hasSendableLeadEmail(l.email)),
+    [selectedLeads],
+  );
 
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [sendSuccess, setSendSuccess] = useState(false);
@@ -59,10 +76,10 @@ export default function DisparosPage() {
   );
 
   const dryRun = useBulkSendDryRunQuery(
-    selectedLeads.map((l) => l.id),
+    sendableSelectedLeads.map((l) => l.id),
     selectedTemplateId,
     allowResend,
-    hasSelectedTemplate && selectedLeads.length > 0 && Boolean(selectedTemplateId),
+    hasSelectedTemplate && sendableSelectedLeads.length > 0 && Boolean(selectedTemplateId),
   );
 
   const dupIds = new Set(dryRun.data?.duplicateLeadIds ?? []);
@@ -70,10 +87,10 @@ export default function DisparosPage() {
   const invalidCount = dryRun.data?.invalidEmailLeadIds.length ?? 0;
 
   const sendCommit = async () => {
-    if (selectedLeads.length === 0 || !selectedTemplateId) return;
+    if (sendableSelectedLeads.length === 0 || !selectedTemplateId) return;
     try {
       const r = await bulkSend.mutateAsync({
-        leadIds: selectedLeads.map((l) => l.id),
+        leadIds: sendableSelectedLeads.map((l) => l.id),
         templateId: selectedTemplateId,
         allowResend,
       });
@@ -91,7 +108,7 @@ export default function DisparosPage() {
   };
 
   const handleDispararClick = () => {
-    if (selectedLeads.length === 0 || !selectedTemplateId) return;
+    if (sendableSelectedLeads.length === 0 || !selectedTemplateId) return;
     const dupN = dryRun.data?.duplicateLeadIds.length ?? 0;
     if (allowResend && dupN > 0) {
       setResendDialogOpen(true);
@@ -102,7 +119,7 @@ export default function DisparosPage() {
 
   const canSendEmail =
     hasSelectedTemplate &&
-    selectedLeads.length > 0 &&
+    sendableSelectedLeads.length > 0 &&
     readyCount > 0 &&
     !dryRun.isFetching &&
     !dryRun.isError;
@@ -145,6 +162,14 @@ export default function DisparosPage() {
         </div>
       </header>
 
+      <EditLeadDialog
+        lead={leadToEdit}
+        open={leadToEdit != null}
+        onOpenChange={(open) => {
+          if (!open) setLeadToEdit(null);
+        }}
+      />
+
       <Dialog open={resendDialogOpen} onOpenChange={setResendDialogOpen}>
         <DialogPopup>
           <DialogHeader>
@@ -171,10 +196,16 @@ export default function DisparosPage() {
               <div>
                 <CardTitle className="text-base">Fila de envio</CardTitle>
                 <CardDescription>
-                  {selectedLeads.length} lead{selectedLeads.length === 1 ? "" : "s"}
+                  {sendableSelectedLeads.length} com e-mail para disparo
+                  {sendListIds.length > sendableSelectedLeads.length ? (
+                    <span className="block text-[11px] text-muted-foreground/90">
+                      {sendListIds.length - sendableSelectedLeads.length} sem e-mail válido{" "}
+                      {selectedLeadsQuery.isPending ? "" : "foram retirados da fila"}
+                    </span>
+                  ) : null}
                 </CardDescription>
               </div>
-              {selectedLeads.length > 0 ? (
+              {sendListIds.length > 0 ? (
                 <Button variant="ghost" size="sm" className="shrink-0 text-muted-foreground" onClick={clearSendList}>
                   Limpar
                 </Button>
@@ -187,17 +218,18 @@ export default function DisparosPage() {
                 <div className="flex flex-col items-center justify-center py-14 text-center text-sm text-muted-foreground">
                   Carregando leads…
                 </div>
-              ) : selectedLeads.length === 0 ? (
+              ) : sendListIds.length === 0 || (!selectedLeadsQuery.isPending && sendableSelectedLeads.length === 0) ? (
                 <div className="flex flex-col items-center justify-center px-4 py-16 text-center">
                   <Inbox className="mb-3 size-10 text-muted-foreground/35" aria-hidden />
                   <p className="text-sm font-medium">Fila vazia</p>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    Na listagem, use o botão de adicionar à fila em cada linha.
+                    Só entram na fila leads com e-mail válido. Na listagem, use o lápis para editar o e-mail ou o
+                    botão de fila em cada linha.
                   </p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-2 pr-3">
-                  {selectedLeads.map((lead) => (
+                  {sendableSelectedLeads.map((lead) => (
                     <div
                       key={lead.id}
                       className="flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-muted/15 px-3 py-2.5"
@@ -220,6 +252,17 @@ export default function DisparosPage() {
                           {formatLeadEmailForTable(lead.email)}
                         </p>
                       </div>
+                      <div className="flex shrink-0 items-center gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => setLeadToEdit(lead)}
+                        aria-label="Editar lead"
+                        title="Editar lead"
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -229,6 +272,7 @@ export default function DisparosPage() {
                       >
                         <Trash2 className="size-4" />
                       </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -278,7 +322,7 @@ export default function DisparosPage() {
               </Select>
             </div>
 
-            {hasSelectedTemplate && selectedLeads.length > 0 && selectedTemplateId ? (
+            {hasSelectedTemplate && sendableSelectedLeads.length > 0 && selectedTemplateId ? (
               <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/20 p-4">
                 {dryRun.isError ? (
                   <p className="text-sm text-destructive">
@@ -293,7 +337,7 @@ export default function DisparosPage() {
                       ) : (
                         <>
                           Prontos para envio: <strong className="text-foreground">{readyCount}</strong> de{" "}
-                          {selectedLeads.length}. E-mail inválido: {invalidCount}. Já receberam: {dupIds.size}.
+                          {sendableSelectedLeads.length}. E-mail inválido: {invalidCount}. Já receberam: {dupIds.size}.
                         </>
                       )}
                     </span>
@@ -375,7 +419,7 @@ export default function DisparosPage() {
                 size="lg"
                 className="w-full gap-2"
                 disabled={
-                  selectedLeads.length === 0 ||
+                  sendableSelectedLeads.length === 0 ||
                   !selectedTemplateId ||
                   !hasSelectedTemplate ||
                   !canSendEmail ||
@@ -385,7 +429,7 @@ export default function DisparosPage() {
                 onClick={handleDispararClick}
               >
                 <Send className="size-4" />
-                {bulkSend.isPending ? "Enviando…" : `Disparar (${readyCount || selectedLeads.length})`}
+                {bulkSend.isPending ? "Enviando…" : `Disparar (${readyCount || sendableSelectedLeads.length})`}
               </Button>
             </div>
           </CardPanel>

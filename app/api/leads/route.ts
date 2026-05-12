@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ZodError } from "zod";
-import type { Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma";
 import {
   leadCreateBodySchema,
@@ -10,7 +9,7 @@ import {
 import { leadIncludeLastEmail, mapLeadToPublic } from "@/lib/server/lead-mapper";
 
 function addContains(
-  and: Prisma.LeadWhereInput[],
+  and: object[],
   field: "category" | "city" | "state" | "country",
   value: string | undefined,
 ) {
@@ -24,28 +23,62 @@ export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
     const parsed = leadsListQuerySchema.safeParse({
+      mailbox: sp.get("mailbox") ?? undefined,
       q: sp.get("q") ?? undefined,
       category: sp.get("category") ?? undefined,
       city: sp.get("city") ?? undefined,
       state: sp.get("state") ?? undefined,
       country: sp.get("country") ?? undefined,
       status: sp.get("status") ?? "todos",
+      onlyRealEmail: sp.get("onlyRealEmail") ?? undefined,
+      hasPhone: sp.get("hasPhone") ?? undefined,
+      hasCompany: sp.get("hasCompany") ?? undefined,
     });
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
-    const { q, category, city, state, country, status } = parsed.data;
+    const { mailbox, q, category, city, state, country, status, onlyRealEmail, hasPhone, hasCompany } =
+      parsed.data;
 
-    const where: Prisma.LeadWhereInput = {};
+    const where: Record<string, unknown> = {};
     if (status !== "todos") {
       where.status = status;
     }
 
-    const and: Prisma.LeadWhereInput[] = [];
+    const and: object[] = [];
+
+    if (mailbox === "inbox") {
+      and.push({ NOT: { emailSents: { some: {} } } });
+    } else {
+      and.push({ emailSents: { some: {} } });
+    }
+
     addContains(and, "category", category);
     addContains(and, "city", city);
     addContains(and, "state", state);
     addContains(and, "country", country);
+
+    if (onlyRealEmail) {
+      and.push({ NOT: { email: { endsWith: "@import.invalid", mode: "insensitive" } } });
+      and.push({
+        AND: [
+          { email: { not: "" } },
+          { NOT: { email: { equals: "—" } } },
+          { NOT: { email: { equals: "-" } } },
+          { email: { contains: "@" } },
+        ],
+      });
+    }
+    if (hasPhone) {
+      and.push({
+        AND: [{ phone: { not: "" } }, { NOT: { phone: { equals: "—" } } }],
+      });
+    }
+    if (hasCompany) {
+      and.push({
+        AND: [{ company: { not: "" } }, { NOT: { company: { equals: "—" } } }],
+      });
+    }
 
     const t = q?.trim();
     if (t) {
@@ -63,7 +96,7 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = await prisma.lead.findMany({
-      where,
+      where: where as never,
       orderBy: { createdAt: "desc" },
       include: leadIncludeLastEmail,
     });

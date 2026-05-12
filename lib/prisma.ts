@@ -30,3 +30,14 @@ export function getPrisma(): PrismaClient {
   }
   return globalForPrisma.prisma;
 }
+
+/**
+ * Código de erro do Prisma (ex.: P2025, P2002) sem importar o namespace `Prisma`.
+ * Evita falha de typecheck quando o pacote `@prisma/client` não reexporta `Prisma` no build.
+ */
+export function prismaClientErrorCode(error: unknown): string | undefined {
+  if (error === null || typeof error !== "object") return undefined;
+  if (!("code" in error)) return undefined;
+  const code = (error as { code: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}

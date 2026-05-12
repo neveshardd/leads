@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
-import { getPrisma } from "@/lib/prisma";
+import { getPrisma, prismaClientErrorCode } from "@/lib/prisma";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -14,7 +13,7 @@ export async function DELETE(_req: Request, ctx: RouteContext) {
     await prisma.lead.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
+    if (prismaClientErrorCode(e) === "P2025") {
       return NextResponse.json({ error: "Lead não encontrado." }, { status: 404 });
     }
     console.error(e);

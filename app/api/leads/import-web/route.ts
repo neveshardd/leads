@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
-import { getPrisma } from "@/lib/prisma";
+import { getPrisma, prismaClientErrorCode } from "@/lib/prisma";
 import { fallbackCompany } from "@/lib/serper/fetch-serp";
 import { extractPhoneFromSnippet } from "@/lib/lead-display";
 import {
@@ -53,7 +52,7 @@ export async function POST(req: NextRequest) {
         });
         created += 1;
       } catch (e) {
-        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        if (prismaClientErrorCode(e) === "P2002") {
           skippedDuplicate += 1;
           continue;
         }
